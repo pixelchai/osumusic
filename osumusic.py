@@ -11,6 +11,7 @@ from mutagen.easyid3 import EasyID3
 from mutagen.id3 import APIC, ID3NoHeaderError
 from mutagen.mp3 import MP3
 from mutagen.mp3 import EasyMP3
+import traceback
 
 MODE_1S=['general','editor','metadata','difficulty','colours']
 MODE_2S=['events','hitobjects']
@@ -76,7 +77,7 @@ class OsuFile:
     def img(self):
         #should work for most
         for line in self.data['Events']:
-            if line.startswith('0,0,"') and line.endswith('",0,0'):
+            if line.startswith('0,0,"'):
                 m=re.search(r'\"([^\"]+)\"',line)
                 return os.path.join(self.dir,m.group(1))
         return None
@@ -103,19 +104,29 @@ class OsuFile:
         except ID3NoHeaderError:
             audio=mutagen.File(out,easy=True)
             audio.add_tags()
-        audio['title']=self.data['Metadata']['TitleUnicode']
-        audio['artist']=self.data['Metadata']['ArtistUnicode']
+        try:
+            audio['title']=self.data['Metadata']['TitleUnicode']
+        except KeyError:
+            audio['title']=self.data['Metadata']['Title']
+        try:
+            audio['artist']=self.data['Metadata']['ArtistUnicode']
+        except KeyError:
+            audio['artist']=self.data['Metadata']['Artist']
         audio['album']=album
         audio.save()
 
         #advanced editing
         audio = MP3(out,translate=True)
-        with io.BytesIO() as output:
-            with Image.open(self.img()) as img:
-                # img.thumbnail((512, 512), Image.ANTIALIAS)
-                # img=ImageOps.fit(img,(512,512),Image.ANTIALIAS)
-                img.save(output, 'PNG')
-            imgdata = output.getvalue()
+        try:
+            with io.BytesIO() as output:
+                with Image.open(self.img()) as img:
+                    # img.thumbnail((512, 512), Image.ANTIALIAS)
+                    # img=ImageOps.fit(img,(512,512),Image.ANTIALIAS)
+                    img.save(output, 'PNG')
+                imgdata = output.getvalue()
+        except:
+            with open(self.img(),'rb') as img:
+                imgdata=img.read()
 
         audio.tags.add(APIC(
             encoding=3,
@@ -152,8 +163,8 @@ if __name__ =='__main__':
     maps=[]
     with open(col_file,'r') as cf:
         file=cf.read()
-        for m in re.finditer(r'(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9]\.[^\s]{2,}) (.+?)\[',file):
-            maps.append(m.group(2))
+        for m in re.finditer(r'(.+?)\[',file):
+            maps.append(m.group(1))
 
     sdirs=[os.path.join(songs_dir, o) for o in os.listdir(songs_dir) if os.path.isdir(os.path.join(songs_dir,o))]
     for sdir in sdirs:
@@ -168,5 +179,9 @@ if __name__ =='__main__':
             if any([osu.title() == x.replace(osu.data['Metadata']['Artist']+' - ','').strip() for x in maps]):
                 print(osu.title())
                 # if osu.title().lower()=='osu! tutorial'.lower():
-                osu.to_mp3()
+                try:
+                    osu.to_mp3()
+                except:
+                    print("UNCAUGHT ERROR!!")
+                    traceback.print_exc()
             # break
